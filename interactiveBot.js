@@ -1,128 +1,80 @@
 // interactiveBot.js
 const TelegramBot = require('node-telegram-bot-api');
-const { queryAllProviders } = require('./providers/registry');
+const { checkAvailability } = require('./providers/visasbot');
+require('dotenv').config();
 
-// === Ortam değişkenleri ===
-const TELEGRAM_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
-if (!TELEGRAM_TOKEN) {
-  console.error('❌ TELEGRAM_BOT_TOKEN bulunamadı!');
-  process.exit(1);
-}
+const bot = new TelegramBot(process.env.TELEGRAM_BOT_TOKEN, { polling: true });
 
-const bot = new TelegramBot(TELEGRAM_TOKEN, { polling: true });
+// Minimalist buton listesi
+const countries = [
+  { code: 'ita', name: 'İtalya' },
+  { code: 'esp', name: 'İspanya' },
+  { code: 'nld', name: 'Hollanda' },
+  { code: 'deu', name: 'Almanya' },
+  { code: 'fra', name: 'Fransa' },
+  { code: 'swe', name: 'İsveç' },
+  { code: 'nor', name: 'Norveç' },
+];
 
-// === Kullanıcı durumu ===
-const userStates = new Map();
+const cities = ['Istanbul', 'Ankara'];
 
-// === Ülke listesi (örnek) ===
-const COUNTRIES = {
-  ita: 'İtalya',
-  esp: 'İspanya',
-  nld: 'Hollanda',
-  deu: 'Almanya',
-  fra: 'Fransa',
-  swe: 'İsveç',
-  nor: 'Norveç'
-};
-
-// === Başlangıç komutu ===
-bot.onText(/\/start/, (msg) => {
-  const chatId = msg.chat.id;
-  userStates.delete(chatId);
-  bot.sendMessage(chatId, "Merhaba! Ne yapmak istiyorsunuz?\n\n• Randevu Sorgulama", {
+// Başlangıç mesajı
+bot.onText(/\/start/, async (msg) => {
+  const opts = {
     reply_markup: {
       keyboard: [['Randevu Sorgulama']],
       resize_keyboard: true,
-      one_time_keyboard: true
-    }
-  });
+      one_time_keyboard: false,
+    },
+  };
+  await bot.sendMessage(msg.chat.id, 'Merhaba 👋 Ne yapmak istiyorsun?', opts);
 });
 
-// === Randevu sorgulama akışı ===
+// Randevu sorgulama başlatma
 bot.on('message', async (msg) => {
-  const chatId = msg.chat.id;
-  const text = (msg.text || '').trim();
-  const state = userStates.get(chatId) || {};
+  if (msg.text === 'Randevu Sorgulama') {
+    const buttons = countries.map((c) => [{ text: c.name }]);
+    await bot.sendMessage(msg.chat.id, 'Hangi ülkenin randevusunu sorgulamak istiyorsun?', {
+      reply_markup: { keyboard: buttons, resize_keyboard: true },
+    });
+  }
 
-  if (text === 'Randevu Sorgulama') {
-    state.step = 'country';
-    userStates.set(chatId, state);
-    const countryButtons = Object.entries(COUNTRIES).map(([code, name]) => [{ text: name, callback_data: code }]);
-    bot.sendMessage(chatId, 'Hangi ülkenin randevusunu sorgulamak istiyorsunuz?', {
+  const selectedCountry = countries.find((c) => c.name === msg.text);
+  if (selectedCountry) {
+    await bot.sendMessage(msg.chat.id, `🔍 ${selectedCountry.name} için şehir seçiniz:`, {
       reply_markup: {
-        keyboard: Object.values(COUNTRIES).map(v => [v]),
-        resize_keyboard: true
+        keyboard: cities.map((c) => [{ text: c }]),
+        resize_keyboard: true,
+      },
+    });
+    bot.once('message', async (cityMsg) => {
+      const city = cityMsg.text;
+      await bot.sendMessage(msg.chat.id, `⏳ ${selectedCountry.name} (${city}) için randevu kontrol ediliyor...`);
+
+      try {
+        const results = await checkAvailability({
+          missionCodes: [selectedCountry.code],
+          city,
+        });
+
+        if (!results || results.length === 0) {
+          await bot.sendMessage(msg.chat.id, '⚠️ Hiç veri bulunamadı.');
+          return;
+        }
+
+        let text = `📅 ${selectedCountry.name} (${city}) sonuçları:\n\n`;
+        for (const r of results) {
+          text += `🌐 ${r.provider.toUpperCase()} — ${r.status === 'open' ? '🟢 Müsait' : '🔴 Kapalı'}\n`;
+          if (r.date) text += `📆 Tarih: ${r.date}\n`;
+          if (r.note) text += `📝 ${r.note}\n`;
+          text += '\n';
+        }
+
+        await bot.sendMessage(msg.chat.id, text);
+      } catch (err) {
+        console.error(err);
+        await bot.sendMessage(msg.chat.id, '🚨 Bir hata oluştu, lütfen tekrar deneyin.');
       }
     });
-    return;
-  }
-
-  // === Ülke seçimi ===
-  if (state.step === 'country') {
-    const selected = Object.entries(COUNTRIES).find(([code, name]) => name === text);
-    if (!selected) {
-      bot.sendMessage(chatId, 'Lütfen geçerli bir ülke seçin.');
-      return;
-    }
-    state.countryCode = selected[0];
-    state.step = 'city';
-    bot.sendMessage(chatId, `Seçtiğiniz ülke: ${selected[1]}\n\nHangi şehir için sorgulama yapmak istiyorsunuz?\n(örnek: Ankara veya "atla" yazabilirsiniz)`);
-    return;
-  }
-
-  // === Şehir seçimi ===
-  if (state.step === 'city') {
-    if (text.toLowerCase() === 'atla') {
-      state.city = '';
-    } else {
-      state.city = text;
-    }
-    state.step = 'visaType';
-    bot.sendMessage(chatId, `Hangi vize türü için sorgulamak istiyorsunuz?\n(örnek: Tourism, Student, Job Seeker veya "atla")`);
-    return;
-  }
-
-  // === Vize tipi seçimi ===
-  if (state.step === 'visaType') {
-    if (text.toLowerCase() === 'atla') {
-      state.visaType = '';
-    } else {
-      state.visaType = text;
-    }
-
-    bot.sendMessage(chatId, '🔍 Vize randevuları sorgulanıyor, lütfen bekleyin...');
-
-    const params = {
-      countryCode: state.countryCode,
-      city: state.city,
-      visaType: state.visaType
-    };
-
-    try {
-      const results = await queryAllProviders(params);
-      const formatted = formatResults(results);
-      bot.sendMessage(chatId, formatted);
-    } catch (err) {
-      console.error('Hata:', err);
-      bot.sendMessage(chatId, '❌ Bir hata oluştu. Lütfen daha sonra tekrar deneyin.');
-    }
-
-    userStates.delete(chatId);
   }
 });
-
-// === Yardımcı fonksiyon ===
-function formatResults(results) {
-  if (!results || results.length === 0)
-    return 'Kriterlere uygun boş randevu bulunamadı.';
-
-  const max = 10;
-  const lines = results.slice(0, max).map(r =>
-    `• [${r.provider}] ${r.missionCode.toUpperCase()} — ${r.center} — ${r.visaType} — ${r.status}${r.date ? ' — ' + r.date : ''}`
-  );
-  if (results.length > max)
-    lines.push(`...ve ${results.length - max} daha.`);
-  return `Bulunan randevular (${results.length}):\n${lines.join('\n')}`;
-}
-
-console.log('✅ Telegram bot başlatıldı...');
