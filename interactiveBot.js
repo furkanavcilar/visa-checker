@@ -1,84 +1,83 @@
-require('dotenv').config();
-const TelegramBot = require('node-telegram-bot-api');
-const { queryAllProviders } = require('./providers/registry');
+import TelegramBot from "node-telegram-bot-api";
+import express from "express";
+import { queryAllProviders } from "./providers/registry.js";
 
-// --- Bot'u Tekil Başlat ---
-let bot;
-if (!global.botInstance) {
-  bot = new TelegramBot(process.env.TELEGRAM_BOT_TOKEN, { polling: true });
-  global.botInstance = bot;
-  console.log('✅ Telegram bot başlatıldı (tek instance).');
-} else {
-  bot = global.botInstance;
-  console.log('⚠️ Bot zaten aktif, yeni instance başlatılmadı.');
-}
+// Ortam değişkenleri
+const TOKEN = process.env.TELEGRAM_BOT_TOKEN;
+const URL = process.env.RAILWAY_STATIC_URL || "https://visa-checker.up.railway.app";
+const PORT = process.env.PORT || 3000;
 
-// --- Komutlar ve Etkileşimler ---
-bot.onText(/\/start/, async (msg) => {
-  const chatId = msg.chat.id;
-  const opts = {
-    reply_markup: {
-      keyboard: [
-        [{ text: '🇮🇹 İtalya' }],
-        [{ text: '🇫🇷 Fransa' }],
-        [{ text: '🇩🇪 Almanya' }],
-        [{ text: '🇳🇱 Hollanda' }],
-        [{ text: '🇪🇸 İspanya' }],
-        [{ text: '🇸🇪 İsveç' }],
-        [{ text: '🇳🇴 Norveç' }],
-      ],
-      resize_keyboard: true,
-      one_time_keyboard: true,
-    },
-  };
-  await bot.sendMessage(chatId, 'Merhaba 👋\nHangi ülkenin vize randevusunu sorgulamak istiyorsunuz?', opts);
+// Bot oluşturuluyor (webhook modu)
+const bot = new TelegramBot(TOKEN);
+await bot.setWebHook(`${URL}/bot${TOKEN}`);
+
+console.log("✅ Telegram bot başlatıldı (webhook modu).");
+
+// Express uygulaması başlat
+const app = express();
+app.use(express.json());
+
+// Telegram’dan gelen güncellemeleri dinle
+app.post(`/bot${TOKEN}`, (req, res) => {
+  bot.processUpdate(req.body);
+  res.sendStatus(200);
 });
 
-bot.on('message', async (msg) => {
+// Web sunucusunu başlat
+app.listen(PORT, () => {
+  console.log(`🌐 Webhook listener aktif - Port: ${PORT}`);
+});
+
+// /start komutu
+bot.onText(/\/start/, (msg) => {
   const chatId = msg.chat.id;
-  const text = msg.text?.trim();
+  const welcome = `
+🌍 *Visa Checker Bot'a Hoşgeldiniz!*
+Lütfen kontrol etmek istediğiniz ülke grubunu seçin:
+- 🇫🇷 Fransa
+- 🇩🇪 Almanya
+- 🇳🇱 Hollanda
+- 🇹🇷 Türkiye
+- 🇪🇸 İspanya
 
-  const countries = {
-    '🇮🇹 İtalya': 'ita',
-    '🇫🇷 Fransa': 'fra',
-    '🇩🇪 Almanya': 'deu',
-    '🇳🇱 Hollanda': 'nld',
-    '🇪🇸 İspanya': 'esp',
-    '🇸🇪 İsveç': 'swe',
-    '🇳🇴 Norveç': 'nor',
-  };
+Komut:
+\`/check <ülke_kodu>\`
+örnek: /check fr
+  `;
+  bot.sendMessage(chatId, welcome, { parse_mode: "Markdown" });
+});
 
-  if (countries[text]) {
-    const countryCode = countries[text];
-    await bot.sendMessage(chatId, `🔍 ${text} için uygun randevular aranıyor...`);
+// /check komutu (ülke kontrolü)
+bot.onText(/\/check (.+)/, async (msg, match) => {
+  const chatId = msg.chat.id;
+  const country = match[1].trim().toLowerCase();
 
-    try {
-      const results = await queryAllProviders({ countryCode });
-      if (results.length === 0) {
-        await bot.sendMessage(chatId, `❌ Şu anda ${text} için boş randevu bulunamadı.`);
-      } else {
-        let reply = `✅ ${text} için bulunan randevular:\n\n`;
-        for (const r of results) {
-          reply += `📅 ${r.date} - ${r.city}\n`;
-        }
-        await bot.sendMessage(chatId, reply);
-      }
-    } catch (err) {
-      console.error('Sorgu hatası:', err);
-      await bot.sendMessage(chatId, '⚠️ Randevu sorgusu sırasında hata oluştu, lütfen tekrar deneyin.');
+  try {
+    bot.sendMessage(chatId, "🔍 Randevu durumu sorgulanıyor, lütfen bekleyin...");
+
+    const results = await queryAllProviders({ missionCodes: [country] });
+    if (!results || results.length === 0) {
+      bot.sendMessage(chatId, `❌ ${country.toUpperCase()} için uygun randevu bulunamadı.`);
+      return;
     }
+
+    let message = `✅ *${country.toUpperCase()} için uygun randevular bulundu:*\n\n`;
+    for (const r of results) {
+      message += `📍 *${r.provider}* - ${r.location}\nDurum: ${r.status}\n\n`;
+    }
+
+    bot.sendMessage(chatId, message, { parse_mode: "Markdown" });
+  } catch (err) {
+    console.error("Sorgu hatası:", err);
+    bot.sendMessage(chatId, "⚠️ Sorgu sırasında bir hata oluştu, lütfen tekrar deneyin.");
   }
 });
 
-// --- Hata Yönetimi ---
-bot.on('polling_error', (error) => {
-  console.error('Polling hatası:', error.code, error.message);
+// Hataları logla (gizli şekilde)
+bot.on("polling_error", (err) => {
+  console.error("Polling hatası:", err.message);
 });
 
-process.on('uncaughtException', (err) => {
-  console.error('Beklenmeyen hata:', err);
-});
-
-process.on('unhandledRejection', (reason) => {
-  console.error('Yakalanmamış Promise hatası:', reason);
+bot.on("webhook_error", (err) => {
+  console.error("Webhook hatası:", err.message);
 });
