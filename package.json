@@ -2,6 +2,12 @@
   "name": "visa-checker",
   "version": "1.0.2",
   "description": "Schengen vizesi randevularını otomatik takip eden ve Telegram üzerinden bildirim gönderen bot",
+  "type": "module",
+  "main": "src/index.js",
+  "scripts": {
+    "dev": "node --env-file=.env src/index.js",
+    "start": "node src/index.js"
+  },
   "author": {
     "name": "Statelyx",
     "email": "avcilarfurkan@hotmail.com",
@@ -26,10 +32,6 @@
     "bildirim"
   ],
   "license": "MIT",
-  "main": "interactiveBot.js",
-  "scripts": {
-    "start": "node interactiveBot.js"
-  },
   "dependencies": {
     "axios": "^1.6.2",
     "dotenv": "^16.3.1",
@@ -37,6 +39,6 @@
     "node-telegram-bot-api": "^0.66.0"
   },
   "engines": {
-    "node": ">=16.0.0"
+    "node": ">=18.0.0"
   }
 }
