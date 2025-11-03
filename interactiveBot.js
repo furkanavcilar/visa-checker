@@ -199,8 +199,6 @@ bot.on('polling_error', (err) => {
 
 console.log('Interactive bot started and polling for messages...');
 
-update: real visa API integration
-
 
 
 
