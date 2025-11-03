@@ -1,12 +1,12 @@
 // registry.js
-// Tüm provider modüllerini tek yerde toplayan yapı
+// Tüm provider modüllerini tek yerde toplayan yapı (ESM sürümü)
 
-const idata = require("./idata");
-const vfs = require("./vfs");
-const tls = require("./tls");
-const bls = require("./bls");
+import * as idata from './idata.js';
+import * as vfs from './vfs.js';
+import * as tls from './tls.js';
+import * as bls from './bls.js';
 
-async function queryAllProviders(params) {
+export async function queryAllProviders(params) {
   const providers = [idata, vfs, tls, bls];
   const results = [];
 
@@ -21,5 +21,3 @@ async function queryAllProviders(params) {
 
   return results;
 }
-
-module.exports = { queryAllProviders };
