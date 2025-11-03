@@ -1,28 +1,51 @@
 // providers/registry.js
-const visasbot = require('./visasbot');
+// Tüm sağlayıcıları tek yerden yöneten kayıt sistemi
 
-/**
- * yeni provider eklemek için bu diziye ekle:
- * { name: 'vfs', mod: require('./vfs') }
- */
-const PROVIDERS = [
-  { name: 'visasbot', mod: visasbot },
+const { checkAvailability: checkVisasbot } = require('./visasbot');
+const { checkAvailability: checkVfs } = require('./vfs');
+const { checkAvailability: checkIdata } = require('./idata');
+const { checkAvailability: checkTls } = require('./tls');
+const { checkAvailability: checkBls } = require('./bls');
+
+const providers = [
+  { name: 'visasbot', fn: checkVisasbot },
+  { name: 'vfs', fn: checkVfs },
+  { name: 'idata', fn: checkIdata },
+  { name: 'tls', fn: checkTls },
+  { name: 'bls', fn: checkBls },
 ];
 
 /**
- * tüm providerları dolaş, sonuçları topla
- * @param {{countryCode?: string, city?: string, visaType?: string}} params
+ * Belirtilen parametrelerle tüm sağlayıcılardan randevu sorgular
+ * @param {Object} params
+ * @param {string} params.city - Şehir (örnek: Ankara)
+ * @param {string[]} params.missionCodes - Ülkeler (örnek: ['ita', 'nld'])
+ * @returns {Promise<Availability[]>}
  */
 async function queryAllProviders(params) {
   const results = [];
-  for (const p of PROVIDERS) {
-    try {
-      const r = await p.mod.checkAvailability(params);
-      if (Array.isArray(r) && r.length) results.push(...r);
-    } catch (e) {
-      console.error(`[registry] ${p.name} çalışırken hata:`, e?.message || e);
+
+  for (const missionCode of params.missionCodes) {
+    for (const provider of providers) {
+      try {
+        const res = await provider.fn({
+          city: params.city,
+          missionCode
+        });
+        results.push(...res);
+      } catch (err) {
+        results.push({
+          provider: provider.name,
+          missionCode,
+          city: params.city,
+          status: 'unknown',
+          date: null,
+          note: `Hata: ${err.message}`
+        });
+      }
     }
   }
+
   return results;
 }
 
