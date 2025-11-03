@@ -1,7 +1,7 @@
 // providers/tls.js
-// TLS Contact sağlayıcısından randevu kontrolü
+// TLS Contact sağlayıcısından randevu kontrolü (ESM versiyon)
 
-const { fetchPage, containsPattern } = require('./genericHttp');
+import { fetchPage, containsPattern } from './genericHttp.js';
 
 /**
  * TLS Contact üzerinden randevu kontrolü
@@ -10,7 +10,7 @@ const { fetchPage, containsPattern } = require('./genericHttp');
  * @param {string} params.missionCode - Ülke kodu (örnek: ita, deu, fra)
  * @returns {Promise<Availability[]>}
  */
-async function checkAvailability({ city, missionCode }) {
+export async function checkAvailability({ city, missionCode }) {
   const baseUrl = `https://${missionCode}.tlscontact.com/tr/${city}/login.php`;
   const html = await fetchPage(baseUrl);
 
@@ -56,5 +56,3 @@ async function checkAvailability({ city, missionCode }) {
     note: 'Durum tespit edilemedi'
   }];
 }
-
-module.exports = { checkAvailability };
