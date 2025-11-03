@@ -1,30 +1,13 @@
-// providers/registry.js
-// Tüm sağlayıcıları tek yerden yöneten kayıt sistemi
+// registry.js
+// Tüm provider modüllerini tek yerde toplayan yapı
 
-const { checkAvailability: checkVisasbot } = require('./visasbot');
-const { checkAvailability: checkVfs } = require('./vfs');
-const { checkAvailability: checkIdata } = require('./idata');
-const { checkAvailability: checkTls } = require('./tls');
-const { checkAvailability: checkBls } = require('./bls');
-
-const providers = [
-  { name: 'visasbot', fn: checkVisasbot },
-  { name: 'vfs', fn: checkVfs },
-  { name: 'idata', fn: checkIdata },
-  { name: 'tls', fn: checkTls },
-  { name: 'bls', fn: checkBls },
-];
-
-/**
- * Belirtilen parametrelerle tüm sağlayıcılardan randevu sorgular
- * @param {Object} params
- * @param {string} params.city - Şehir (örnek: Ankara)
- * @param {string[]} params.missionCodes - Ülkeler (örnek: ['ita', 'nld'])
- * @returns {Promise<Availability[]>}
- */
+const idata = require("./idata");
+const vfs = require("./vfs");
+const tls = require("./tls");
+const bls = require("./bls");
 
 async function queryAllProviders(params) {
-  const providers = [idata, vfs, tls, bls]; // senin mevcut provider modüllerin
+  const providers = [idata, vfs, tls, bls];
   const results = [];
 
   for (const provider of providers) {
