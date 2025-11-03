@@ -1,7 +1,7 @@
 // providers/bls.js
-// BLS International randevu kontrolü
+// BLS International randevu kontrolü (ESM versiyon)
 
-const { fetchPage, containsPattern } = require('./genericHttp');
+import { fetchPage, containsPattern } from './genericHttp.js';
 
 /**
  * BLS International randevu kontrolü
@@ -10,7 +10,7 @@ const { fetchPage, containsPattern } = require('./genericHttp');
  * @param {string} params.missionCode - Ülke kodu (örnek: esp, pol)
  * @returns {Promise<Availability[]>}
  */
-async function checkAvailability({ city, missionCode }) {
+export async function checkAvailability({ city, missionCode }) {
   const baseUrl = `https://bls${missionCode}.com/book-appointment`;
   const html = await fetchPage(baseUrl);
 
@@ -56,5 +56,3 @@ async function checkAvailability({ city, missionCode }) {
     note: 'Durum tespit edilemedi'
   }];
 }
-
-module.exports = { checkAvailability };
