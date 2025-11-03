@@ -1,20 +1,21 @@
 {
   "name": "visa-checker",
   "version": "1.0.1",
+  "type": "module",
   "description": "Schengen vizesi randevularını otomatik takip eden ve Telegram üzerinden bildirim gönderen bot",
   "author": {
-    "name": "byigitt",
-    "email": "bbayburtlu@hotmail.com",
-    "url": "https://github.com/byigitt"
+    "name": "Statelyx",
+    "email": "avcilarfurkan@hotmail.com",
+    "url": "https://github.com/furkanavcilar"
   },
-  "homepage": "https://github.com/byigitt/visa-checker",
+  "homepage": "https://github.com/furkanavcilar/visa-checker",
   "repository": {
     "type": "git",
-    "url": "https://github.com/byigitt/visa-checker.git"
+    "url": "https://github.com/furkanavcilar/visa-checker.git"
   },
   "bugs": {
-    "url": "https://github.com/byigitt/visa-checker/issues",
-    "email": "bbayburtlu@hotmail.com"
+    "url": "https://github.com/furkanavcilar/visa-checker/issues",
+    "email": "avcilarfurkan@hotmail.com"
   },
   "keywords": [
     "schengen",
@@ -26,10 +27,10 @@
     "bildirim"
   ],
   "license": "MIT",
-  "main": "interactiveBot.js",
+  "main": "dist/index.js",
   "scripts": {
     "build": "tsc",
-    "start": "node interactiveBot.js",
+    "start": "node --no-deprecation dist/index.js",
     "dev": "node --no-deprecation -r ts-node/register src/index.ts",
     "lint": "eslint . --ext .ts",
     "test": "jest",
