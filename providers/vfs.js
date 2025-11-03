@@ -1,7 +1,7 @@
 // providers/vfs.js
-// VFS Global sağlayıcısından randevu kontrolü
+// VFS Global sağlayıcısından randevu kontrolü (ESM versiyon)
 
-const { fetchPage, containsPattern } = require('./genericHttp');
+import { fetchPage, containsPattern } from './genericHttp.js';
 
 /**
  * VFS Global randevu kontrolü
@@ -10,7 +10,7 @@ const { fetchPage, containsPattern } = require('./genericHttp');
  * @param {string} params.missionCode - Ülke kodu (örnek: nld, nor, swe)
  * @returns {Promise<Availability[]>}
  */
-async function checkAvailability({ city, missionCode }) {
+export async function checkAvailability({ city, missionCode }) {
   const baseUrl = `https://visa.vfsglobal.com/${missionCode}/tr/${city}/book-an-appointment`;
   const html = await fetchPage(baseUrl);
 
@@ -56,5 +56,3 @@ async function checkAvailability({ city, missionCode }) {
     note: 'Durum tespit edilemedi'
   }];
 }
-
-module.exports = { checkAvailability };
