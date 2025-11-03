@@ -1,63 +1,42 @@
-// providers/idata.js
-// iDATA sağlayıcısından randevu kontrolü
-
-const { fetchPage, containsPattern } = require('./genericHttp');
+import axios from "axios";
 
 /**
- * iDATA sitesi üzerinden boş randevu kontrolü
- * @param {Object} params
- * @param {string} params.city - Şehir (örnek: Ankara)
- * @param {string} params.missionCode - Ülke kodu (örnek: ita, deu)
- * @returns {Promise<Availability[]>}
+ * IDATA vize randevu kontrolü
+ * @param {Object} options - Parametreler
+ * @param {string} options.country - Ülke kodu (örnek: "deu")
+ * @param {string} options.city - Şehir adı (örnek: "Ankara")
+ * @returns {Promise<Array>} Sonuç listesi
  */
-async function checkAvailability({ city, missionCode }) {
-  const baseUrl = `https://idata.com.tr/${missionCode}/${city}/appointment`;
-  const html = await fetchPage(baseUrl);
+export async function checkAvailability({ country = "tur", city = "Ankara" }) {
+  const url = `https://idata.com.tr/${country}/${city}/appointment`;
 
-  if (!html) {
-    return [{
-      provider: 'idata',
-      missionCode,
-      city,
-      status: 'unknown',
-      date: null,
-      note: 'Veri alınamadı'
-    }];
+  try {
+    const response = await axios.get(url, {
+      headers: {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
+        "Accept-Language": "tr-TR,tr;q=0.9",
+      },
+      timeout: 10000,
+    });
+
+    // Eğer siteye erişim varsa
+    return [
+      {
+        provider: "idata",
+        country,
+        city,
+        status: "success",
+        date: "tarih yok (henüz analiz eklenmedi)",
+      },
+    ];
+  } catch (err) {
+    // Eğer 403 dönerse
+    if (err.response && err.response.status === 403) {
+      console.error(`[HTTP ERROR] ${url} → 403 Forbidden`);
+      return [{ provider: "idata", country, city, status: "forbidden" }];
+    }
+
+    console.error(`[HTTP ERROR] ${url} → ${err.message}`);
+    return [{ provider: "idata", country, city, status: "error" }];
   }
-
-  // HTML içinde "no appointments" ifadesi varsa dolu değil
-  if (containsPattern(html, /no\s*appointments|no slots available|dolu/i)) {
-    return [{
-      provider: 'idata',
-      missionCode,
-      city,
-      status: 'closed',
-      date: null,
-      note: 'Boş randevu yok'
-    }];
-  }
-
-  // Eğer "appointment available" tarzı metin varsa açık
-  if (containsPattern(html, /appointment available|available slots/i)) {
-    return [{
-      provider: 'idata',
-      missionCode,
-      city,
-      status: 'open',
-      date: new Date().toISOString(),
-      note: 'Boş randevu mevcut'
-    }];
-  }
-
-  // Hiçbiri bulunamazsa bilinmiyor
-  return [{
-    provider: 'idata',
-    missionCode,
-    city,
-    status: 'unknown',
-    date: null,
-    note: 'Durum tespit edilemedi'
-  }];
 }
-
-module.exports = { checkAvailability };
