@@ -1,56 +1,142 @@
-import TelegramBot from "node-telegram-bot-api";
+// src/index.ts
 import dotenv from "dotenv";
-import cron from "node-cron";
-import { config } from "./config/environment";
-import { cacheService } from "./services/cache";
-import { checkAppointments } from "./utils/appointmentChecker";
-
 dotenv.config();
 
-// --- TELEGRAM BOT BAŞLAT --- //
-async function startBot() {
-  try {
-    const token = process.env.TELEGRAM_BOT_TOKEN;
-    if (!token) throw new Error("TELEGRAM_BOT_TOKEN tanımlı değil (.env hatası)");
+import TelegramBot from "node-telegram-bot-api";
+import { PROVIDERS } from "./providers";
 
-    const bot = new TelegramBot(token, { polling: true });
+// ENV kontrolü
+const token = process.env.TELEGRAM_BOT_TOKEN;
+if (!token) {
+  console.error("Hata: TELEGRAM_BOT_TOKEN .env içinde tanımlı değil.");
+  process.exit(1);
+}
 
-    try {
-      // Webhook varsa kaldır (400 dönerse hata değil)
-      await bot.deleteWebHook({ drop_pending_updates: true });
-      console.log("Webhook silindi (polling modu aktif).");
-    } catch (e: any) {
-      console.warn("Webhook silinemedi:", e.message);
+// Botu başlat (polling)
+const bot = new TelegramBot(token, { polling: true });
+
+// Yardımcı: ülke listesini inline keyboard için hazırla
+function buildCountryKeyboard() {
+  // PROVIDERS key'lerini sırala (dilediğin sıraya göre)
+  const keys = Object.keys(PROVIDERS);
+
+  // Telegram inline keyboard: her satırda 2 buton göster (isteğe göre ayarla)
+  const rows: { text: string; callback_data?: string; url?: string }[][] = [];
+  for (let i = 0; i < keys.length; i += 2) {
+    const row: { text: string; callback_data?: string; url?: string }[] = [];
+
+    for (let j = 0; j < 2; j++) {
+      const k = keys[i + j];
+      if (!k) continue;
+      const p = PROVIDERS[k];
+      // Buton text: bayrak emojisi + ülke adı — emoji'leri isteğe göre özelleştir
+      const emoji = countryFlagEmoji(k) || "";
+      row.push({
+        text: `${emoji} ${p.name}`,
+        callback_data: `country:${p.code}`,
+      });
+    }
+    rows.push(row);
+  }
+
+  return { reply_markup: { inline_keyboard: rows } };
+}
+
+// Basit bayrak emoji eşlemeleri (kısa)
+function countryFlagEmoji(code: string) {
+  const map: Record<string, string> = {
+    nld: "🇳🇱",
+    deu: "🇩🇪",
+    fra: "🇫🇷",
+    ita: "🇮🇹",
+    esp: "🇪🇸",
+    swe: "🇸🇪",
+    nor: "🇳🇴",
+    tur: "🇹🇷",
+  };
+  return map[code.toLowerCase()] || "";
+}
+
+// /start handler
+bot.onText(/\/start/, async (msg) => {
+  const chatId = msg.chat.id;
+  await bot.sendMessage(
+    chatId,
+    `Merhaba! Hangi ülkenin vize randevularını kontrol etmek istersin? Butonlardan birini seç:`,
+    buildCountryKeyboard()
+  );
+});
+
+// ayrıca /countries komutu
+bot.onText(/\/countries/, async (msg) => {
+  const chatId = msg.chat.id;
+  await bot.sendMessage(
+    chatId,
+    `Lütfen bir ülke seçin:`,
+    buildCountryKeyboard()
+  );
+});
+
+// callback_query handler — kullanıcı ülke seçtiğinde => sağlayıcı linklerini URL butonu olarak gönder
+bot.on("callback_query", async (callbackQuery) => {
+  const data = callbackQuery.data;
+  const chatId = callbackQuery.message?.chat?.id;
+  const messageId = callbackQuery.message?.message_id;
+
+  if (!data || !chatId) return;
+
+  // örn: country:nld
+  if (data.startsWith("country:")) {
+    const code = data.split(":")[1];
+    const provider = PROVIDERS[code];
+
+    if (!provider) {
+      await bot.answerCallbackQuery(callbackQuery.id, {
+        text: "Bu ülke config'te tanımlı değil. Admin'e bildir.",
+        show_alert: true,
+      });
+      return;
     }
 
-    console.log("✅ Telegram bot başlatıldı (tek instance).");
+    // inline keyboard for provider buttons (URL'ler)
+    const keyboard = provider.buttons.map((b) => [{ text: b.text, url: b.url }]);
 
-    bot.on("polling_error", (err) => {
-      console.error("Polling hatası:", err.message);
-    });
+    // Eğer message üzerinde eskiden bir menü varsa, edit ile güncelle (temiz görünür)
+    try {
+      await bot.editMessageText(`Seçilen: ${provider.name}\nİlgili vize merkezleri:`, {
+        chat_id: chatId,
+        message_id: messageId,
+        reply_markup: { inline_keyboard: keyboard },
+      });
+    } catch (e) {
+      // edit başarısızsa, yeni mesaj at
+      await bot.sendMessage(chatId, `Seçilen: ${provider.name}\nİlgili vize merkezleri:`, {
+        reply_markup: { inline_keyboard: keyboard },
+      });
+    }
 
-    // Railway konteyner yeniden başlarken düzgün kapatma
-    process.once("SIGINT", () => bot.stopPolling());
-    process.once("SIGTERM", () => bot.stopPolling());
-
-  } catch (err: any) {
-    console.error("❌ Telegram bot başlatılamadı:", err.message);
+    // callback'i sonlandır
+    await bot.answerCallbackQuery(callbackQuery.id);
+    return;
   }
-}
 
-startBot();
+  // diğer callback tipleri varsa handle et
+  await bot.answerCallbackQuery(callbackQuery.id);
+});
 
-// --- CACHE VE CRON GÖREVLERİ --- //
-cacheService.startCleanupInterval();
-cron.schedule(config.app.checkInterval, checkAppointments);
+// polling hatalarını logla
+bot.on("polling_error", (err) => {
+  console.error("Polling hatası:", err);
+});
 
-console.log(`Vize randevu kontrolü başlatıldı. Kontrol sıklığı: ${config.app.checkInterval}`);
-console.log(`Hedef ülke: ${config.app.targetCountry}`);
-console.log(`Hedef ülkeler: ${config.app.missionCountries.join(", ")}`);
+// düzgün kapanış (Railway / Heroku gibi platformlarda)
+process.once("SIGINT", () => {
+  console.log("SIGINT alındı; bot durduruluyor...");
+  bot.stopPolling();
+});
+process.once("SIGTERM", () => {
+  console.log("SIGTERM alındı; bot durduruluyor...");
+  bot.stopPolling();
+});
 
-if (config.app.targetCities.length > 0) {
-  console.log(`Hedef şehirler: ${config.app.targetCities.join(", ")}`);
-}
-
-// İlk kontrolü yap
-void checkAppointments();
+console.log("Telegram bot hazır. Komut: /start veya /countries");
