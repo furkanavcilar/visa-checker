@@ -1,50 +1,29 @@
 // providers/visasbot.js
-const axios = require('axios');
+// Artık doğrudan dış API değil, registry içindeki tüm sağlayıcılardan veri çeker
+
+const { queryAllProviders } = require('./registry');
 
 /**
- * visasbot endpointinden veriyi çeker ve normalize eder
- * env: VISA_API_URL (örn: https://api.visasbot.com/api/visa/list)
+ * Gerçek zamanlı randevu sorgulaması yapar
+ * @param {Object} params
+ * @param {string} params.city - Şehir (örnek: Istanbul)
+ * @param {string[]} params.missionCodes - Ülkeler (örnek: ['ita', 'fra', 'nld'])
  * @returns {Promise<Availability[]>}
  */
-async function checkAvailability({ countryCode, city, visaType }) {
-  const url = process.env.VISA_API_URL || 'https://api.visasbot.com/api/visa/list';
+async function checkAvailability(params) {
   try {
-    const res = await axios.get(url, { timeout: 15000 });
-    const raw = Array.isArray(res.data) ? res.data : (res.data?.data || []);
-    if (!Array.isArray(raw)) return [];
-
-    const out = raw
-      .filter(a => a && (a.status === 'open' || a.status === 'waitlist_open'))
-      .filter(a => {
-        // mission (hedef ülke) filtre
-        if (countryCode && countryCode.toLowerCase() !== 'all') {
-          if (!a.mission_code || a.mission_code.toLowerCase() !== countryCode.toLowerCase()) return false;
-        }
-        // şehir filtre
-        if (city) {
-          const center = (a.center || '').toLowerCase();
-          if (!center.includes(city.toLowerCase())) return false;
-        }
-        // vize tipi filtre
-        if (visaType) {
-          const vt = (a.visa_type || '').toLowerCase();
-          if (!vt.includes(visaType.toLowerCase())) return false;
-        }
-        return true;
-      })
-      .map(a => ({
-        provider: 'visasbot',
-        missionCode: a.mission_code || '',
-        center: a.center || '',
-        visaType: a.visa_type || '',
-        status: a.status || '',
-        date: a.date || a.last_available || a.last_checked_at || ''
-      }));
-
-    return out;
-  } catch (e) {
-    console.error('[visasbot] hata:', e?.message || e);
-    return [];
+    const results = await queryAllProviders(params);
+    return results;
+  } catch (err) {
+    console.error('checkAvailability hatası:', err);
+    return [{
+      provider: 'visasbot',
+      missionCode: 'general',
+      city: params.city,
+      status: 'unknown',
+      date: null,
+      note: `Hata oluştu: ${err.message}`
+    }];
   }
 }
 
