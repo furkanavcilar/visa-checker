@@ -26,10 +26,10 @@
     "bildirim"
   ],
   "license": "MIT",
-  "main": "dist/index.js",
+  "main": "interactiveBot.js",
   "scripts": {
     "build": "tsc",
-    "start": "node --no-deprecation dist/index.js",
+    "start": "node interactiveBot.js",
     "dev": "node --no-deprecation -r ts-node/register src/index.ts",
     "lint": "eslint . --ext .ts",
     "test": "jest",
